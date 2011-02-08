@@ -4,13 +4,9 @@
 <title>Learning WebGL &mdash; lesson 1</title>
 <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
 
-<!--<script type="text/javascript" src="sylvester.js"></script>
-<script type="text/javascript" src="glUtils.js"></script>
-<script type="text/javascript" src="webgl-debug.js"></script>-->
-
 <script id="shader-fs" type="x-shader/x-fragment">
   #ifdef GL_ES
-  precision highp float;
+  precision mediump float;
   #endif
 // FragmentProgram
 //
@@ -228,13 +224,44 @@ void main()
 </script>
 
 <script id="shader-vs" type="x-shader/x-vertex">
-  attribute vec3 aVertexPosition;
-	varying vec3 org,dir;
-	void main() {
-		gl_Position=vec4(aVertexPosition, 1);
-		org=vec3(0,0,0);
-		dir=normalize(-vec3(-aVertexPosition.x*1.6,-aVertexPosition.y,1));
-	}
+#ifdef GL_ES
+precision mediump float;
+#endif
+vec4 qmul(vec4 q1, vec4 q2) {
+	return vec4(
+		dot(q1, q2.wzyx * vec4(1.0, 1.0, -1.0, 1.0)),
+		dot(q1, q2.zwxy * vec4(-1.0, 1.0, 1.0, 1.0)),
+		dot(q1, q2.yxwz * vec4(1.0, -1.0, 1.0, 1.0)),
+		dot(q1, q2 * vec4(-1.0, -1.0, -1.0, 1.0)));
+}
+
+vec4 conj(vec4 q) {
+	return q * vec4(-1.0, -1.0, -1.0, 1.0);
+}
+
+vec4 angle_axis(float rad, vec3 axis_f3) {
+	float halfRad = rad * 0.5;
+	vec3 f3 = normalize(axis_f3);
+	vec4 result = f3.xyzz * sin(halfRad);
+	result.w = cos(halfRad);
+	return result;
+}
+
+vec3 rot3(vec4 q, vec3 v3) {
+	vec4 f4 = v3.xyzz * vec4(1.0, 1.0, 1.0, 0.0);
+	vec4 result = qmul(qmul(q, f4), conj(q));
+	return result.xyz;
+}
+attribute vec3 aVertexPosition;
+uniform vec2 angles;
+varying vec3 org,dir;
+void main() {
+	vec3 center = vec3(0, 0, -3.5);
+	vec4 q = qmul(angle_axis(angles.x, vec3(0.0, 1.0, 0.0)), angle_axis(angles.y, vec3(1.0, 0.0, 0.0)));
+	gl_Position=vec4(aVertexPosition, 1);
+	org=center + rot3(q, -center);
+	dir=normalize(rot3(q, -vec3(-aVertexPosition.x*1.6,-aVertexPosition.y,1)));
+}
 </script>
 
 
@@ -246,7 +273,6 @@ void main()
   var gl;
   function initGL(canvas) {
     try {
-      //gl = WebGLDebugUtils.makeDebugContext(canvas.getContext("experimental-webgl"), throwOnGLError);
       gl = canvas.getContext("experimental-webgl");
       gl.viewportWidth = canvas.width;
       gl.viewportHeight = canvas.height;
@@ -294,7 +320,10 @@ void main()
   }
 
 
+  var TARGET_FPS = 20;
   var shaderProgram;
+  var keyState = {up: false, down: false, left: false, right: false};
+  var angles = [0, 0];
   function initShaders() {
     var fragmentShader = getShader(gl, "shader-fs");
     var vertexShader = getShader(gl, "shader-vs");
@@ -313,56 +342,11 @@ void main()
     shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
     gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
 
-    //shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
-    //shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+	shaderProgram.angles = gl.getUniformLocation(shaderProgram, "angles");
   }
 
-/*
-  var mvMatrix;
-
-  function loadIdentity() {
-    mvMatrix = Matrix.I(4);
-  }
-
-
-  function multMatrix(m) {
-    mvMatrix = mvMatrix.x(m);
-  }
-
-
-  function mvTranslate(v) {
-    var m = Matrix.Translation($V([v[0], v[1], v[2]])).ensure4x4();
-    multMatrix(m);
-  }
-
-
-  var pMatrix;
-  function perspective(fovy, aspect, znear, zfar) {
-    pMatrix = makePerspective(fovy, aspect, znear, zfar);
-  }
-
-
-  function setMatrixUniforms() {
-    gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, new Float32Array(pMatrix.flatten()));
-    gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, new Float32Array(mvMatrix.flatten()));
-  }
-*/
-
-
-  //var triangleVertexPositionBuffer;
   var squareVertexPositionBuffer;
   function initBuffers() {
-    /*triangleVertexPositionBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
-    var vertices = [
-         0.0,  1.0,  0.0,
-        -1.0, -1.0,  0.0,
-         1.0, -1.0,  0.0
-    ];
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-    triangleVertexPositionBuffer.itemSize = 3;
-    triangleVertexPositionBuffer.numItems = 3;*/
-
     squareVertexPositionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
     vertices = [
@@ -381,27 +365,32 @@ void main()
     gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    //perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
-    //loadIdentity();
-
-    /*mvTranslate([-1.5, 0.0, -7.0]);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
-    gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, triangleVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-    setMatrixUniforms();
-    gl.drawArrays(gl.TRIANGLES, 0, triangleVertexPositionBuffer.numItems);*/
-
-
-    //mvTranslate([3.0, 0.0, 0.0]);
     gl.bindBuffer(gl.ARRAY_BUFFER, squareVertexPositionBuffer);
     gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, squareVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
-    //setMatrixUniforms();
+	var DELTA = Math.PI / TARGET_FPS;
+	if (keyState.up) {
+	  angles[1] -= DELTA;
+	}
+	if (keyState.down) {
+	  angles[1] += DELTA;
+	}
+	if (keyState.left) {
+	  angles[0] -= DELTA;
+	}
+	if (keyState.right) {
+	  angles[0] += DELTA;
+	}
+	gl.uniform2fv(shaderProgram.angles, angles);
+
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, squareVertexPositionBuffer.numItems);
   }
 
 
 
   function webGLStart() {
+    var body = document.getElementById("body");
+	body.onkeyup = onKeyUp;
+	body.onkeydown = onKeyDown;
     var canvas = document.getElementById("lesson01-canvas");
     initGL(canvas);
     initShaders();
@@ -415,10 +404,42 @@ void main()
     gl.depthFunc(gl.LEQUAL);
 
 	drawScene();
-    //setInterval(drawScene, 15);
+    setInterval(drawScene, 1000 / TARGET_FPS);
   }
 
+  function onKeyDown(e) {
+    switch (e.keyCode) {
+	case 38: // up
+	  keyState.up = true;
+	  break;
+	case 40: // down
+	  keyState.down = true;
+	  break;
+	case 37: // left
+	  keyState.left = true;
+	  break;
+	case 39: // right
+	  keyState.right = true;
+	  break;
+	}
+  }
 
+  function onKeyUp(e) {
+    switch (e.keyCode) {
+	case 38: // up
+	  keyState.up = false;
+	  break;
+	case 40: // down
+	  keyState.down = false;
+	  break;
+	case 37: // left
+	  keyState.left = false;
+	  break;
+	case 39: // right
+	  keyState.right = false;
+	  break;
+	}
+  }
 
 </script>
 
@@ -426,14 +447,16 @@ void main()
 </head>
 
 
-<body onload="webGLStart();">
+<body id="body" onload="webGLStart();">
 
-  <canvas id="lesson01-canvas" style="border: none;" width="160" height="100"></canvas>
+	<div>
+		<canvas id="lesson01-canvas" style="border: none;" width="320" height="200"/>
+	</div>
 
-  <br/>
   <div><ul>
-	  <li>original webgl sample is in <a href="http://learningwebgl.com/blog/?p=28">here</a>.</li>
-	  <li>original ao shader is in <a href="http://kioku.sys-k.net/archives/2009/01/gpuaoglsl.html">here</a>.</li>
+	  <li>use "array keys" to rotate</li>
+	  <li>original webgl sample is <a href="http://learningwebgl.com/blog/?p=28">here</a>.</li>
+	  <li>original ao shader is <a href="http://kioku.sys-k.net/archives/2009/01/gpuaoglsl.html">here</a>.</li>
   </ul></div>
 </body>
 
